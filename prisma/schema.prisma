@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String
+  avatar        String?
+  plan          Plan      @default(FREE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  meetings      Meeting[]
+  sessions      Session[]
+  usage         UsageLog[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Meeting {
+  id              String          @id @default(cuid())
+  userId          String
+  title           String
+  status          MeetingStatus   @default(UPLOADING)
+  duration        Int?            // seconds
+  audioUrl        String?         // S3 key
+  audioSize       Int?            // bytes
+  language        String          @default("en")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript      Transcript?
+  summary         Summary?
+  pdf             PDF?
+  speakers        Speaker[]
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model Transcript {
+  id          String   @id @default(cuid())
+  meetingId   String   @unique
+  fullText    String   @db.Text
+  segments    Json     // Array of { start, end, speaker, text }
+  wordCount   Int
+  createdAt   DateTime @default(now())
+
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+}
+
+model Summary {
+  id            String   @id @default(cuid())
+  meetingId     String   @unique
+  tldr          String   @db.Text
+  keyPoints     Json     // string[]
+  actionItems   Json     // { task, owner?, dueDate? }[]
+  decisions     Json     // string[]
+  sentiment     String?  // positive | neutral | negative
+  topics        Json     // string[]
+  createdAt     DateTime @default(now())
+
+  meeting       Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+}
+
+model Speaker {
+  id          String   @id @default(cuid())
+  meetingId   String
+  label       String   // Speaker 1, Speaker 2 or name if identified
+  talkTime    Int      // seconds
+  wordCount   Int
+
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+}
+
+model PDF {
+  id          String   @id @default(cuid())
+  meetingId   String   @unique
+  s3Key       String
+  url         String
+  size        Int
+  createdAt   DateTime @default(now())
+
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+}
+
+model UsageLog {
+  id          String      @id @default(cuid())
+  userId      String
+  action      UsageAction
+  tokens      Int?
+  meta        Json?
+  createdAt   DateTime    @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, createdAt])
+}
+
+enum Plan {
+  FREE
+  PRO
+  TEAM
+}
+
+enum MeetingStatus {
+  UPLOADING
+  TRANSCRIBING
+  SUMMARIZING
+  GENERATING_PDF
+  DONE
+  FAILED
+}
+
+enum UsageAction {
+  UPLOAD
+  TRANSCRIBE
+  SUMMARIZE
+  PDF_GENERATE
+  PDF_DOWNLOAD
+}
